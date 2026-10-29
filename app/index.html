@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replayer de mains</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap">
+<style>
+/* Self-service tool: load a Winamax hand history, pick a hand, view it in the replayer, copy a share link. Same dark look as the replayers. */
+:root {
+  color-scheme: dark;
+  --bg: #000; --fg: #f4f4f4; --muted: #8d8d8d; --line: #20232b; --plate: #0b0d12; --btn: #2d2f36; --btn-hi: #3a3d46;
+  --acc: #f2a22a; --win: #22b35e; --lose: #d8322f;
+  --su-s: #1c1c1c; --su-h: #c21f1f; --su-d: #2160dc; --su-c: #1e9442;
+  --font: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.45;
+  padding: 20px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px)); }
+.wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 { font-size: 1.5rem; margin: 0; }
+h2 { font-size: 1.05rem; margin: 0 0 10px; }
+p { margin: 0; }
+.muted { color: var(--muted); font-size: .85rem; }
+.card { background: var(--plate); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+button, .btn { font: inherit; font-weight: 700; background: var(--btn); color: var(--fg); border: 0; border-bottom: 3px solid #1c1e24;
+  border-radius: 10px; padding: 9px 16px; cursor: pointer; min-height: 44px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+button:hover, .btn:hover { background: var(--btn-hi); }
+button.primary { background: var(--acc); color: #2a1800; border-bottom-color: #b5761b; }
+button.primary:hover { background: #ffb64a; }
+button:focus-visible, .btn:focus-visible, textarea:focus-visible, input:focus-visible, .row:focus-visible, summary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.drop { border: 2px dashed #3a3d46; border-radius: 12px; padding: 22px 14px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; }
+.drop.over, .drop:hover { border-color: var(--acc); background: rgba(242,162,42,.06); }
+.drop strong { display: block; font-size: 1rem; margin-bottom: 4px; }
+textarea { width: 100%; min-height: 110px; resize: vertical; background: #000; color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px; font: .8rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+details summary { cursor: pointer; font-weight: 700; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 28px; }
+details summary::-webkit-details-marker { display: none; }
+details summary::after { content: "+"; font-size: 1.3rem; color: var(--muted); }
+details[open] summary::after { content: "–"; }
+details ol { margin: 10px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.msg { font-size: .85rem; min-height: 1.2em; }
+.msg.err { color: #ff7a6b; }
+.listhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.listhead label { display: inline-flex; gap: 8px; align-items: center; font-size: .9rem; cursor: pointer; min-height: 32px; }
+.listhead input { width: 18px; height: 18px; accent-color: var(--acc); }
+.rows { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 4.2em 4.6em 3.4em 1fr auto; gap: 10px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.row:hover { background: #15171c; }
+.row .n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .85rem; }
+.row .pos { font-weight: 700; font-size: .8rem; background: #e6e6e6; color: #111; border-radius: 999px; padding: 0 7px; justify-self: start; }
+.row .bd { display: flex; gap: 3px; flex-wrap: wrap; min-width: 0; }
+.row .tags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.row .net { font-weight: 700; font-variant-numeric: tabular-nums; font-size: .9rem; text-align: right; min-width: 5.5em; }
+.net.pos-net { color: var(--win); } .net.neg-net { color: #ff7a6b; }
+.tag { font-size: .68rem; font-weight: 700; border: 1px solid #3a3d46; color: var(--muted); border-radius: 6px; padding: 0 5px; white-space: nowrap; }
+.mini { display: inline-grid; place-items: center; width: 1.7em; height: 2.2em; border-radius: 4px; color: #fff; font-weight: 700; font-size: .78rem; line-height: 1; }
+.mini.s { background: var(--su-s); border: 1px solid #5a5a5a; } .mini.h { background: var(--su-h); } .mini.d { background: var(--su-d); } .mini.c { background: var(--su-c); }
+.hc { display: flex; gap: 2px; }
+.viewer { display: flex; flex-direction: column; gap: 10px; }
+.vbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.vbar .sp { flex: 1; }
+.ctx { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .82rem; color: var(--muted); }
+.ctx input { width: 5.2em; background: #000; color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: .9rem; min-height: 36px; }
+iframe { width: 100%; border: 0; display: block; background: #000; min-height: 760px; }
+.calc { text-align: center; color: var(--muted); padding: 40px 0; }
+.foot { color: var(--muted); font-size: .8rem; }
+[hidden] { display: none !important; }
+@media (max-width: 600px) {
+  .row { grid-template-columns: 3.4em 4.2em 1fr auto; }
+  .row .pos { display: none; }
+  .row .tags { display: none; }
+  h1 { font-size: 1.3rem; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header id="top">
+    <h1>Replayer de mains</h1>
+    <p class="muted">Charge un historique Winamax, choisis une main et partage-la avec un lien. Tout se passe dans ton navigateur : rien n'est envoyé ni stocké.</p>
+  </header>
+
+  <section class="card" id="input">
+    <h2>1. Ton historique</h2>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choisir un fichier d'historique">
+      <strong>Glisse ton fichier Winamax (.txt) ici</strong>
+      <span class="muted">ou clique pour le choisir</span>
+      <input type="file" id="file" accept=".txt,text/plain" hidden>
+    </div>
+    <div style="margin-top:12px">
+      <textarea id="paste" placeholder="… ou colle ici le texte d'une ou plusieurs mains (format Winamax)"></textarea>
+      <div class="actions"><button class="primary" id="load" type="button">Charger les mains</button><span class="msg" id="msg" aria-live="polite"></span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <details id="shot">
+      <summary>Depuis une capture d'écran Betclic</summary>
+      <ol>
+        <li>Ouvre ton assistant IA (ChatGPT, Claude, Gemini…) et colle-lui le message ci-dessous.</li>
+        <li>Ajoute ta capture d'écran de la main Betclic, avec si tu veux une ligne de contexte (date, niveau).</li>
+        <li>Copie le texte qu'il te renvoie, colle-le dans la zone ci-dessus et clique sur « Charger les mains ».</li>
+      </ol>
+      <textarea id="prompt" readonly>Convertis la capture d'écran de ma main de poker Betclic (tournoi, Hold'em No Limit) en historique au format Winamax. Réponds uniquement avec le texte de la main, sans commentaire.
+
+Format exact à respecter :
+Winamax Poker - Tournament "&lt;NOM DU TOURNOI&gt;" buyIn: &lt;X&gt;€ level: &lt;N&gt; - HandId: #0-&lt;n° de main&gt;-0 - Holdem no limit (&lt;ante&gt;/&lt;SB&gt;/&lt;BB&gt;) - &lt;AAAA/MM/JJ&gt; 20:00:00 UTC
+Table: '&lt;NOM&gt;(1)#001' 6-max (real money) Seat #&lt;n° du siège du bouton&gt; is the button
+Seat 1: &lt;pseudo&gt; (&lt;stack en jetons avant ante&gt;)
+… une ligne par joueur, sièges numérotés dans le sens des aiguilles d'une montre
+*** ANTE/BLINDS ***
+&lt;pseudo&gt; posts ante &lt;X&gt;   (une ligne par joueur s'il y a une ante)
+&lt;pseudo&gt; posts small blind &lt;X&gt;
+&lt;pseudo&gt; posts big blind &lt;X&gt;
+Dealt to &lt;mon pseudo&gt; [&lt;carte&gt; &lt;carte&gt;]
+*** PRE-FLOP ***
+&lt;actions&gt;
+*** FLOP *** [c1 c2 c3]
+&lt;actions&gt;
+*** TURN *** [c1 c2 c3][c4]
+&lt;actions&gt;
+*** RIVER *** [c1 c2 c3 c4][c5]
+&lt;actions&gt;
+*** SHOW DOWN ***
+&lt;pseudo&gt; shows [&lt;carte&gt; &lt;carte&gt;]
+*** SUMMARY ***
+
+Règles :
+- Les montants de la capture sont en BB : convertis en jetons (jetons = BB × valeur de la big blind). Les stacks affichés sont avant l'ante.
+- Actions : « &lt;pseudo&gt; folds », « checks », « calls X » (X = montant ajouté), « bets X », « raises X to Y » (Y = total misé sur la street), ajoute « and is all-in » si le joueur est à tapis.
+- Cartes : rang puis couleur, T pour le 10, couleurs s h d c (ex. 9s, Td, Ah, 2c).
+- Mon pseudo est celui dont les cartes sont affichées en haut de la capture.
+- Si une carte ou un montant n'est pas lisible avec certitude, ne devine pas : demande-moi.
+- Vérifie que la somme des mises correspond au pot et que les stacks sont cohérents.
+- Date, heure ou niveau inconnus : mets la date du jour et level: 1.</textarea>
+      <div class="actions"><button type="button" id="copyprompt">Copier le message</button><span class="msg" id="pmsg" aria-live="polite"></span></div>
+    </details>
+  </section>
+
+  <section class="card" id="list" hidden>
+    <div class="listhead">
+      <h2 id="lcount" style="margin:0">Mains</h2>
+      <label><input type="checkbox" id="onlyplayed" checked> Seulement les mains où je mets des jetons</label>
+    </div>
+    <div class="rows" id="rows" role="list"></div>
+  </section>
+
+  <section class="viewer" id="viewer" hidden>
+    <div class="vbar">
+      <button type="button" id="back">← Toutes les mains</button>
+      <a class="btn" id="home" href="./" hidden>Créer tes replayers</a>
+      <span class="sp"></span>
+      <button type="button" class="primary" id="share">Copier le lien de partage</button>
+    </div>
+    <div class="ctx" id="ctx">
+      <span>Contexte (facultatif) :</span>
+      <label>Restants <input type="number" min="1" id="cl" inputmode="numeric"></label>
+      <label>Payés <input type="number" min="1" id="cp" inputmode="numeric"></label>
+      <label>Entrants <input type="number" min="1" id="ce" inputmode="numeric"></label>
+    </div>
+    <span class="msg" id="smsg" aria-live="polite"></span>
+    <div class="calc" id="calc" hidden>Calcul de l'équité…</div>
+    <iframe id="frame" title="Replayer de la main"></iframe>
+  </section>
+
+  <p class="foot">Pour Winamax en tournoi Hold'em No Limit. Le lien de partage contient la main elle-même, sans rien d'autre de ton historique.</p>
+</div>
+
+<script id="core-src">
+// Replayer core: hand evaluator, exact equity, seat layout and hand simulation. Runs in Node and in the browser.
+// Hand H: { meta, blinds:[ante,sb,bb], seats:[[name,stack],...] (seats[0] = button, then clockwise), hero, heroCards,
+//   ko:[names], bounty:{name:'2,25 €'}, posts:{antes:{name:amt}, sb:[name,amt], bb:[name,amt]} (optional, else derived),
+//   preflop:[[p,act,amt]], flop/turn/river:{board:[..], actions:[[p,act,amt]]}, shown:{name:[c1,c2]} }
+// raise amount = total on the street ("raise to"); call amount is recomputed (call up to the current bet, capped by the stack).
+var RCore = (function () {
+  var R = '23456789TJQKA', S = 'shdc';
+  function C(s) { return { r: R.indexOf(s[0]), s: S.indexOf(s[1]) }; }
+
+  // 7-card hand value (bigger is better); bit masks and reused buffers keep the preflop enumeration fast
+  var RC = new Int8Array(13), SM = new Int32Array(4);
+  function bits(x) { var n = 0; while (x) { x &= x - 1; n++; } return n; }
+  function straightTop(mask) {
+    for (var top = 12; top >= 4; top--) { var m = 0x1F << (top - 4); if ((mask & m) === m) return top; }
+    return (mask & 0x100F) === 0x100F ? 3 : -1;
+  }
+  function topBits(mask, n, ex1, ex2) {
+    var v = 0, k = 0;
+    for (var r = 12; r >= 0 && k < n; r--) if ((mask >> r) & 1 && r !== ex1 && r !== ex2) { v = v * 13 + r; k++; }
+    while (k < n) { v *= 13; k++; }
+    return v;
+  }
+  function score(cs) {
+    RC.fill(0); SM[0] = SM[1] = SM[2] = SM[3] = 0;
+    var rm = 0, i, r;
+    for (i = 0; i < cs.length; i++) { var c = cs[i]; RC[c.r]++; SM[c.s] |= 1 << c.r; rm |= 1 << c.r; }
+    for (var s = 0; s < 4; s++) if (bits(SM[s]) >= 5) {
+      var sf = straightTop(SM[s]); if (sf >= 0) return 8e10 + sf;
+      return 5e10 + topBits(SM[s], 5, -1, -1);
+    }
+    var quad = -1, trip = -1, trip2 = -1, p1 = -1, p2 = -1;
+    for (r = 12; r >= 0; r--) {
+      var n = RC[r];
+      if (n === 4) { if (quad < 0) quad = r; }
+      else if (n === 3) { if (trip < 0) trip = r; else if (trip2 < 0) trip2 = r; }
+      else if (n === 2) { if (p1 < 0) p1 = r; else if (p2 < 0) p2 = r; }
+    }
+    if (quad >= 0) return 7e10 + quad * 13 + topBits(rm, 1, quad, -1);
+    if (trip >= 0 && (trip2 >= 0 || p1 >= 0)) return 6e10 + trip * 13 + Math.max(trip2, p1);
+    var st = straightTop(rm); if (st >= 0) return 4e10 + st;
+    if (trip >= 0) return 3e10 + trip * 169 + topBits(rm, 2, trip, -1);
+    if (p1 >= 0 && p2 >= 0) return 2e10 + p1 * 2197 + p2 * 169 + topBits(rm, 1, p1, p2);
+    if (p1 >= 0) return 1e10 + p1 * 2197 + topBits(rm, 3, p1, -1);
+    return topBits(rm, 5, -1, -1);
+  }
+
+  // exact equity (win + split share) for players with known hands on a partial board
+  function equity(hands, board) {
+    var used = {}; board.forEach(function (c) { used[c] = 1; });
+    Object.keys(hands).forEach(function (n) { hands[n].forEach(function (c) { used[c] = 1; }); });
+    var deck = []; for (var a = 0; a < 13; a++) for (var b = 0; b < 4; b++) if (!used[R[a] + S[b]]) deck.push({ r: a, s: b });
+    var names = Object.keys(hands), hc = names.map(function (n) { return hands[n].map(C); }), b0 = board.map(C);
+    var need = 5 - board.length, eq = names.map(function () { return 0; }), n = 0, acc = [];
+    (function rec(st) {
+      if (acc.length === need) {
+        var bd = b0.concat(acc), sc = hc.map(function (h) { return score(h.concat(bd)); }), m = Math.max.apply(null, sc);
+        var w = sc.filter(function (x) { return x === m; }).length;
+        sc.forEach(function (x, i) { if (x === m) eq[i] += 1 / w; }); n++; return;
+      }
+      for (var i = st; i < deck.length; i++) { acc.push(deck[i]); rec(i + 1); acc.pop(); }
+    })(0);
+    var o = {}; names.forEach(function (nm, i) { o[nm] = Math.round(eq[i] / n * 1000) / 10; }); return o;
+  }
+  function eqKey(hands, board) { return JSON.stringify([Object.keys(hands).sort().map(function (k) { return [k, hands[k]]; }), board]); }
+
+  function posNames(n) {
+    if (n === 2) return ['BU', 'BB'];
+    var after = { 3: [], 4: ['CO'], 5: ['HJ', 'CO'], 6: ['LJ', 'HJ', 'CO'], 7: ['UTG', 'LJ', 'HJ', 'CO'], 8: ['UTG', 'UTG+1', 'LJ', 'HJ', 'CO'], 9: ['UTG', 'UTG+1', 'UTG+2', 'LJ', 'HJ', 'CO'], 10: ['UTG', 'UTG+1', 'UTG+2', 'LJ', 'HJ', 'CO', 'CO'] }[n] || [];
+    return ['BU', 'SB', 'BB'].concat(after);
+  }
+  // seat footprint in px (plate centred on the anchor, cards above it, equity bar below) for desktop and phone tables
+  var LAY = {
+    desk: { W: 820, H: 566, pw: 127, ph: 56, cw: 96, ch: 72, eq: 24, lw: 64, lh: 38, bw: 182, bh: 78, m: 6 },
+    phone: { W: 348, H: 452, pw: 92, ph: 50, cw: 60, ch: 44, eq: 22, lw: 40, lh: 28, bw: 95, bh: 54, m: 4 }
+  };
+  // bet label position: pushed from the plate toward the table centre until it clears this seat, every other seat,
+  // the pot/board block in the middle and the bets already placed; tries the direction to the centre, then sideways, then vertical
+  function placeBets(pts, L) {
+    var m = L.m, cx = L.W / 2, cy = L.H * 0.46;
+    var foot = function (sx, sy) { return [[sx - L.pw / 2, sy - L.ph / 2, sx + L.pw / 2, sy + L.ph / 2 + L.eq], [sx - L.cw / 2, sy - L.ph / 2 - 6 - L.ch, sx + L.cw / 2, sy - L.ph / 2]]; };
+    var seatsPx = pts.map(function (p) { return [p[0] / 100 * L.W, p[1] / 100 * L.H]; });
+    var block = [cx - L.bw, cy - L.bh, cx + L.bw, cy + L.bh];
+    var placed = [], out = [];
+    var hits = function (px, py, r) { return px + L.lw / 2 + m > r[0] && px - L.lw / 2 - m < r[2] && py + L.lh / 2 + m > r[1] && py - L.lh / 2 - m < r[3]; };
+    seatsPx.forEach(function (sp, i) {
+      var sx = sp[0], sy = sp[1], own = foot(sx, sy), others = [];
+      seatsPx.forEach(function (q, j) { if (j !== i) others = others.concat(foot(q[0], q[1])); });
+      var dx = cx - sx, dy = cy - sy, len = Math.hypot(dx, dy) || 1;
+      var dirs = [[dx / len, dy / len], [Math.sign(dx) || 1, 0], [0, Math.sign(dy) || 1]], best = null, fallback = null;
+      for (var d = 0; d < dirs.length && !best; d++) {
+        for (var t = 0; t < len * 1.2; t += 2) {
+          var px = sx + dirs[d][0] * t, py = sy + dirs[d][1] * t;
+          if (own.some(function (r) { return hits(px, py, r); })) continue;
+          if (!fallback) fallback = [px, py];
+          if (others.some(function (r) { return hits(px, py, r); }) || hits(px, py, block) || placed.some(function (r) { return hits(px, py, r); })) continue;
+          if (px < L.lw / 2 || px > L.W - L.lw / 2 || py < 0 || py > L.H) continue;
+          best = [px, py]; break;
+        }
+      }
+      var p = best || fallback || [sx, sy];
+      placed.push([p[0] - L.lw / 2, p[1] - L.lh / 2, p[0] + L.lw / 2, p[1] + L.lh / 2]);
+      out.push([+(p[0] / L.W * 100).toFixed(1), +(p[1] / L.H * 100).toFixed(1)]);
+    });
+    return out;
+  }
+  function layout(H) {
+    var N = H.seats.length, PN = posNames(N), names = H.seats.map(function (s) { return s[0]; });
+    var heroIdx = Math.max(0, names.indexOf(H.hero));
+    var cl = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+    var seats = H.seats.map(function (s, i) {
+      var k = (i - heroIdx + N) % N, th = (90 + k * 360 / N) * Math.PI / 180;
+      var x = cl(50 + 46 * Math.cos(th), 10, 90), y = 50 + 39 * Math.sin(th);
+      var sn = Math.sin(th), xn = cl(50 + 42 * Math.cos(th), 14, 86);
+      // phone: side seats sit above (or below) the board instead of beside it
+      var yn = Math.abs(sn) < 0.3 ? 28 : Math.abs(sn) < 0.45 ? (sn > 0 ? 72 : 28) : Math.abs(sn) < 0.9 ? 50 + 46 * sn : 50 + 40 * sn;
+      var o = { n: s[0], pos: PN[i], xy: [+x.toFixed(1), +y.toFixed(1)], xn: [+xn.toFixed(1), +yn.toFixed(1)], dealer: i === 0, ko: (H.ko || []).indexOf(s[0]) >= 0 };
+      if (H.bounty && H.bounty[s[0]]) o.bounty = H.bounty[s[0]];
+      return o;
+    });
+    var ord = seats.map(function (s, i) { return i; }).sort(function (a, b) { return ((a - heroIdx + N) % N) - ((b - heroIdx + N) % N); });
+    var bd = placeBets(ord.map(function (i) { return seats[i].xy; }), LAY.desk), bp = placeBets(ord.map(function (i) { return seats[i].xn; }), LAY.phone);
+    ord.forEach(function (i, k) { seats[i].bxy = bd[k]; seats[i].bxn = bp[k]; });
+    return seats;
+  }
+
+  // simulate the hand into step snapshots. eqFn(hands, board) returns {name: pct} or null (not computed yet).
+  function simulate(H, eqFn) {
+    eqFn = eqFn || equity;
+    var names = H.seats.map(function (s) { return s[0]; }), N = names.length;
+    var ANTE = H.blinds[0], SB = H.blinds[1], BBv = H.blinds[2];
+    var shown = H.shown || {};
+    var st = { stack: {}, bet: {}, contrib: {}, folded: {}, board: [], reveal: {}, hot: null, eq: null };
+    H.seats.forEach(function (s) { st.stack[s[0]] = s[1]; st.bet[s[0]] = 0; st.contrib[s[0]] = 0; });
+    st.reveal[H.hero] = shown[H.hero] || H.heroCards;
+    var steps = [];
+    var clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+    var snap = function (l) { steps.push({ label: l, s: clone(st) }); };
+    var put = function (p, x) { x = Math.min(x, st.stack[p]); st.stack[p] -= x; st.bet[p] += x; st.contrib[p] += x; };
+    var sweep = function () { names.forEach(function (n) { st.bet[n] = 0; }); };
+    var live = function () { return names.filter(function (n) { return !st.folded[n]; }); };
+    var maxBet = function () { return Math.max.apply(null, names.map(function (n) { return st.bet[n]; })); };
+    function refund() {
+      var top = null, hi = 0, second = 0;
+      names.forEach(function (n) { var b = st.bet[n]; if (b > hi) { second = hi; hi = b; top = n; } else if (b > second) second = b; });
+      var d = hi - second; if (top && d > 0) { st.bet[top] -= d; st.stack[top] += d; st.contrib[top] -= d; }
+    }
+    var locked = false;
+    function checkLock() {
+      // betting is over when at most one live player still has chips and all bets are matched
+      var L = live(); if (L.length < 2) return false;
+      var withChips = L.filter(function (n) { return st.stack[n] > 0; });
+      var hi = Math.max.apply(null, L.map(function (n) { return st.bet[n]; }));
+      return withChips.length <= 1 && withChips.every(function (n) { return st.bet[n] === hi; });
+    }
+    function setEq() {
+      var L = live(); st.eq = null;
+      if (L.length < 2 || !L.every(function (n) { return st.reveal[n]; })) return;
+      var hands = {}; L.forEach(function (n) { hands[n] = st.reveal[n]; });
+      st.eq = eqFn(hands, st.board);
+    }
+    function lockAndReveal() {
+      if (locked || !checkLock()) return;
+      locked = true;
+      live().forEach(function (n) { if (shown[n]) st.reveal[n] = shown[n]; });
+    }
+    function doActions(acts, label) {
+      acts.forEach(function (a) {
+        var p = a[0], act = a[1], x = a[2];
+        if (act === 'fold') st.folded[p] = true;
+        else if (act === 'call') put(p, maxBet() - st.bet[p]);
+        else if (act === 'bet') put(p, x);
+        else if (act === 'raise') put(p, x - st.bet[p]);
+        st.hot = p;
+        snap(label);
+      });
+      refund();
+      lockAndReveal(); setEq();
+      if (steps.length) steps[steps.length - 1].s = clone(st);
+    }
+
+    snap('Blinds');
+    var posts = H.posts || null;
+    var anteOf = function (n) { return posts && posts.antes ? (posts.antes[n] || 0) : ANTE; };
+    var anyAnte = false;
+    names.forEach(function (n) { var x = Math.min(anteOf(n), st.stack[n]); if (x > 0) anyAnte = true; st.stack[n] -= x; st.contrib[n] += x; });
+    if (anyAnte) snap('Blinds');
+    if (posts) {
+      if (posts.sb) put(posts.sb[0], posts.sb[1]);
+      if (posts.bb) put(posts.bb[0], posts.bb[1]);
+    } else {
+      put(N === 2 ? names[0] : names[1], SB); put(N === 2 ? names[1] : names[2], BBv);
+    }
+    snap('Blinds');
+    doActions(H.preflop || [], 'Préflop');
+    var labels = { flop: 'Flop', turn: 'Turn', river: 'River' };
+    ['flop', 'turn', 'river'].some(function (k) {
+      if (!H[k] || live().length < 2) return true;
+      sweep(); st.hot = null; st.board = st.board.concat(H[k].board);
+      setEq(); snap(labels[k]);
+      if (H[k].actions && H[k].actions.length) doActions(H[k].actions, labels[k]);
+      return false;
+    });
+    sweep(); st.hot = null;
+    var L = live();
+    if (L.length >= 2) {
+      L.forEach(function (n) { if (shown[n]) st.reveal[n] = shown[n]; });
+      var known = L.filter(function (n) { return st.reveal[n]; });
+      if (st.board.length === 5 && known.length) {
+        var sc = {}; known.forEach(function (n) { sc[n] = score(st.reveal[n].concat(st.board).map(C)); });
+        var m = Math.max.apply(null, known.map(function (n) { return sc[n]; }));
+        st.eq = {}; known.forEach(function (n) { st.eq[n] = sc[n] === m ? 100 : 0; });
+      }
+      snap('Showdown');
+    }
+    // award each pot to the best known hand among its eligible players (split on ties)
+    function potsOf(q) {
+      var lv = [];
+      live().forEach(function (n) { if (q.stack[n] === 0 && q.contrib[n] > 0 && lv.indexOf(q.contrib[n]) < 0) lv.push(q.contrib[n]); });
+      var mx = Math.max.apply(null, names.map(function (n) { return q.contrib[n]; }));
+      if (lv.indexOf(mx) < 0) lv.push(mx);
+      lv.sort(function (a, b) { return a - b; });
+      var res = [], prev = 0;
+      lv.forEach(function (Lv) {
+        var a = 0; names.forEach(function (n) { var c = q.contrib[n]; a += Math.min(c, Lv) - Math.min(c, prev); });
+        var el = live().filter(function (n) { return q.contrib[n] >= Lv; });
+        if (a > 0) res.push({ amt: a, el: el }); prev = Lv;
+      });
+      return res;
+    }
+    var won = {};
+    potsOf(st).forEach(function (p) {
+      var win = p.el;
+      if (p.el.length > 1 && st.board.length === 5) {
+        var sc2 = {}; p.el.forEach(function (n) { sc2[n] = st.reveal[n] ? score(st.reveal[n].concat(st.board).map(C)) : -1; });
+        var m2 = Math.max.apply(null, p.el.map(function (n) { return sc2[n]; })); win = p.el.filter(function (n) { return sc2[n] === m2; });
+      }
+      win.forEach(function (n) { st.stack[n] += p.amt / win.length; won[n] = (won[n] || 0) + p.amt / win.length; });
+    });
+    names.forEach(function (n) { st.contrib[n] = 0; st.bet[n] = 0; });
+    var lastLabel = steps[steps.length - 1].label;
+    st.hot = Object.keys(won)[0] || null;
+    snap(lastLabel);
+    return { steps: steps, won: won };
+  }
+
+  function buildData(H, eqFn) {
+    var sim = simulate(H, eqFn);
+    var meta = Object.assign({ bb: H.blinds[2], hero: H.hero }, H.meta);
+    return { data: { meta: meta, seats: layout(H), steps: sim.steps }, won: sim.won };
+  }
+  var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  // full standalone page from the templates (head.html, body.html, page.js)
+  function renderPage(data, T) {
+    var m = data.meta;
+    var html = T.head.replace('__PAGETITLE__', esc(m.pageTitle || m.title)) +
+      T.body.replace('__TITLE__', esc(m.title)).replace('__SUB__', esc(m.sub)) +
+      '<script>\nvar DATA = ' + JSON.stringify(data).replace(/</g, '\\u003c') + ';\n' + T.js + '<\/script>\n';
+    return '<!doctype html>\n<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+      html.replace('</style>\n', '</style>\n</head><body>\n') + '</body></html>\n';
+  }
+  return { score: score, equity: equity, eqKey: eqKey, C: C, layout: layout, simulate: simulate, buildData: buildData, renderPage: renderPage, LAY: LAY };
+})();
+if (typeof module !== 'undefined') module.exports = RCore;
+
+</script>
+<script>
+// Winamax tournament hand-history parser -> hands in the replayer format (core.js). Runs in Node and in the browser.
+var WParse = (function () {
+  function k(v) {
+    if (v >= 1000) return String(+(v / 1000).toFixed(2)).replace('.', ',') + 'k';
+    return String(v);
+  }
+  function money(s) { return s.replace(/€/g, '').trim().replace('.', ',') + ' €'; }
+
+  function parseOne(block) {
+    var lines = block.split(/\r?\n/).map(function (l) { return l.replace(/\s+$/, ''); });
+    var head = lines[0];
+    var m = head.match(/Tournament "([^"]*)" buyIn: (.*?) level: (\d+) - HandId: #([\d-]+) - Holdem no limit \(([\d\/]+)\) - (\d{4})\/(\d{2})\/(\d{2}) (\d{2}:\d{2})/);
+    if (!m) return { error: /Holdem no limit/.test(head) ? 'format non reconnu' : 'pas une main de tournoi Hold\'em No Limit' };
+    var bl = m[5].split('/').map(Number);
+    var ante = bl.length === 3 ? bl[0] : 0, sb = bl[bl.length - 2], bb = bl[bl.length - 1];
+    var idParts = m[4].split('-'), num = idParts.length >= 2 ? idParts[1] : idParts[0];
+    var btn = null, seatsRaw = [], hero = null, heroCards = null;
+    var posts = { antes: {}, sb: null, bb: null };
+    var streets = { preflop: [], flop: null, turn: null, river: null }, cur = null, shown = {};
+    var section = 'seats';
+    var names = function () { return seatsRaw.map(function (s) { return s.name; }); };
+    // longest seat name that starts the line (names can contain spaces)
+    var who = function (line) {
+      var best = null;
+      names().forEach(function (n) { if (line.indexOf(n + ' ') === 0 && (!best || n.length > best.length)) best = n; });
+      return best;
+    };
+    var cards = function (s) { return (s.match(/[2-9TJQKA][shdc]/g) || []); };
+    for (var i = 1; i < lines.length; i++) {
+      var l = lines[i];
+      if (!l) continue;
+      var bm = l.match(/Seat #(\d+) is the button/); if (bm) { btn = +bm[1]; continue; }
+      if (/^\*\*\* ANTE\/BLINDS \*\*\*/.test(l)) { section = 'blinds'; continue; }
+      if (/^\*\*\* PRE-FLOP \*\*\*/.test(l)) { section = 'act'; cur = streets.preflop; continue; }
+      var sm = l.match(/^\*\*\* (FLOP|TURN|RIVER) \*\*\* (.*)$/);
+      if (sm) {
+        var all = cards(sm[2]), key = sm[1].toLowerCase();
+        var prev = key === 'flop' ? 0 : key === 'turn' ? 3 : 4;
+        streets[key] = { board: all.slice(prev), actions: [] }; cur = streets[key].actions; section = 'act'; continue;
+      }
+      if (/^\*\*\* SHOW ?DOWN \*\*\*/.test(l)) { section = 'show'; continue; }
+      if (/^\*\*\* SUMMARY \*\*\*/.test(l)) { section = 'summary'; continue; }
+      if (section === 'seats') {
+        var se = l.match(/^Seat (\d+): (.*) \((\d+)(?:, ([^)]*?) bounty)?\)$/);
+        if (se) seatsRaw.push({ seat: +se[1], name: se[2], stack: +se[3], bounty: se[4] ? money(se[4]) : null });
+        continue;
+      }
+      if (section === 'summary') continue;
+      var p = who(l); if (!p) continue;
+      var rest = l.slice(p.length + 1);
+      var dm = rest.match(/^posts (ante|small blind|big blind) (\d+)/);
+      if (dm) {
+        if (dm[1] === 'ante') posts.antes[p] = +dm[2];
+        else if (dm[1] === 'small blind') posts.sb = [p, +dm[2]];
+        else posts.bb = [p, +dm[2]];
+        continue;
+      }
+      if (/^Dealt to /.test(l)) continue;
+      var sh = rest.match(/^shows \[([^\]]*)\]/); if (sh) { shown[p] = cards(sh[1]); continue; }
+      if (!cur) continue;
+      var am = rest.match(/^(folds|checks|calls (\d+)|bets (\d+)|raises (\d+) to (\d+))/);
+      if (!am) continue;
+      if (am[1] === 'folds') cur.push([p, 'fold', 0]);
+      else if (am[1] === 'checks') cur.push([p, 'check', 0]);
+      else if (am[2]) cur.push([p, 'call', +am[2]]);
+      else if (am[3]) cur.push([p, 'bet', +am[3]]);
+      else cur.push([p, 'raise', +am[5]]);
+    }
+    var dl = block.match(/Dealt to (.+?) \[([^\]]*)\]/);
+    if (dl) { hero = dl[1]; heroCards = cards(dl[2]); }
+    if (!seatsRaw.length || !hero || !heroCards || heroCards.length !== 2) return { error: 'main incomplète (joueurs ou cartes du héros introuvables)' };
+    seatsRaw.sort(function (a, b) { return a.seat - b.seat; });
+    // seats[0] = button, then clockwise
+    var bi = seatsRaw.findIndex(function (s) { return s.seat === btn; });
+    if (bi < 0) { bi = 0; for (var j = seatsRaw.length - 1; j >= 0; j--) if (seatsRaw[j].seat < btn) { bi = j; break; } }
+    var ordered = seatsRaw.slice(bi).concat(seatsRaw.slice(0, bi));
+    var bounty = {}; ordered.forEach(function (s) { if (s.bounty) bounty[s.name] = s.bounty; });
+    var date = m[8] + '/' + m[7] + '/' + m[6];
+    var buyin = m[2].replace(/(\d+)\.(\d+)/g, '$1,$2').replace(/€/g, ' €').replace(/\s+/g, ' ').trim();
+    var H = {
+      meta: {
+        title: m[1] + ' ' + buyin, pageTitle: 'Main ' + num + ', ' + m[1],
+        sub: 'Winamax · blinds ' + k(sb) + '/' + k(bb) + (ante ? ', ante ' + k(ante) : '') + ' · niveau ' + m[3] + ' · ' + date + ' · main ' + num,
+        left: null, paid: null, itm: null, entrants: null, avg: null, hideUnknown: true
+      },
+      blinds: [ante, sb, bb], seats: ordered.map(function (s) { return [s.name, s.stack]; }),
+      hero: hero, heroCards: heroCards, ko: [], bounty: bounty, posts: posts,
+      preflop: streets.preflop, flop: streets.flop, turn: streets.turn, river: streets.river, shown: shown
+    };
+    return { num: num, tournament: m[1], date: date, time: m[9], level: +m[3], text: block.trim(), H: H };
+  }
+
+  function parse(text) {
+    var blocks = text.replace(/^﻿/, '').split(/(?=^Winamax Poker - )/m).filter(function (b) { return /^Winamax Poker - /.test(b); });
+    return blocks.map(parseOne);
+  }
+  return { parse: parse, parseOne: parseOne };
+})();
+if (typeof module !== 'undefined') module.exports = WParse;
+
+</script>
+<script>
+(function () {
+  var T = {"head":"<title>__PAGETITLE__</title>\n<meta name=\"claude:viewport-fit-sides\" content=\"cover\">\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap\">\n<style>\n/* Layout: black page, dark oval table, nameplates centred on the rim with cards and bets pointing to the centre, four-colour cards, street timeline below. */\n:root {\n  color-scheme: dark;\n  --bg: #000000;\n  --fg: #f4f4f4;\n  --muted: #8d8d8d;\n  --line: #2b2b2b;\n  --btn: #2d2f36;\n  --btn-hi: #3a3d46;\n  --plate: #0b0d12;\n  --felt-a: #0b3b20;\n  --felt-b: #041b0e;\n  --rail: #0b0b0b;\n  --stack: #f2a22a;\n  --hl: #ffffff;\n  --win: #22b35e;\n  --lose: #d8322f;\n  --su-s: #1c1c1c;\n  --su-h: #c21f1f;\n  --su-d: #2160dc;\n  --su-c: #1e9442;\n  --back: #d83a5e;\n  --font: \"Rubik\", system-ui, -apple-system, \"Segoe UI\", sans-serif;\n}\n* { box-sizing: border-box; }\nbody {\n  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.4;\n  padding-block: 18px 40px;\n  padding-left: max(16px, env(safe-area-inset-left, 0px));\n  padding-right: max(16px, env(safe-area-inset-right, 0px));\n}\n.wrap { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }\nheader { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }\nh1 { font-weight: 700; font-size: 1.35rem; margin: 0; text-wrap: balance; }\n.sub { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }\n.hr { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }\n.info { text-align: right; font-size: 0.75rem; line-height: 1.3; font-weight: 500; }\n.info .itm { color: var(--win); }\n.info [hidden] { display: none; }\n.bty { font-size: .64rem; font-weight: 500; color: #ffb347; line-height: 1.2; white-space: nowrap; }\n.unit { display: inline-flex; background: var(--plate); border: 1px solid #20232b; border-radius: 9px; padding: 2px; }\n.unit button { min-height: 32px; min-width: 0; padding: 4px 12px; font-size: .8rem; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }\n.unit button[aria-pressed=\"true\"] { background: var(--btn); color: var(--fg); }\n\n.table { position: relative; width: 100%; aspect-ratio: 1.45 / 1; margin-top: 60px; margin-bottom: 10px; container-type: inline-size; }\n.seat { --x: var(--lx); --y: var(--ly); }\n.felt {\n  position: absolute; inset: 10% 3%; border-radius: 50%;\n  background: radial-gradient(ellipse at center, var(--felt-a) 0%, var(--felt-b) 100%);\n  border: 13px solid var(--rail); box-shadow: 0 0 0 2px var(--line), inset 0 0 0 2px #0a2515;\n}\n.felt::after { content: \"\"; position: absolute; inset: 6%; border-radius: 50%; border: 1px solid rgba(255,255,255,.12); }\n.center { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; }\n.pots { font-size: .78rem; color: var(--fg); background: rgba(0,0,0,.35); padding: 2px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; white-space: nowrap; }\n.potbox { display: flex; flex-direction: column; align-items: center; gap: 2px; }\n.pottot { font-weight: 500; font-size: .95rem; color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; }\n.bet .bp { display: block; font-size: .72rem; font-weight: 400; text-align: center; line-height: 1.2; }\n.bet .ba { display: block; text-align: center; }\n.pot { font-weight: 500; font-size: 1rem; color: var(--stack); font-variant-numeric: tabular-nums; white-space: nowrap; }\n.board { display: flex; gap: 6px; min-height: 3.6em; font-size: clamp(15px, 3.1cqw, 26px); }\n\n.card {\n  position: relative; width: 2.6em; height: 3.6em; border-radius: .28em; color: #fff; font-weight: 700;\n  box-shadow: 0 1px 3px rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.18); flex: none;\n}\n.card .tl { position: absolute; top: .22em; left: .3em; font-size: .62em; line-height: 1; display: flex; flex-direction: column; align-items: center; }\n.card .tl i { font-style: normal; font-size: .95em; }\n.card .br { position: absolute; right: .22em; bottom: .12em; font-size: 1.45em; line-height: 1; }\n.card.su-s { background: var(--su-s); border-color: #5a5a5a; }\n.card.su-h { background: var(--su-h); }\n.card.su-d { background: var(--su-d); }\n.card.su-c { background: var(--su-c); }\n.card.back { background: var(--back); border: 2px solid #f4a3b3; }\n.card.empty { background: rgba(0,0,0,.18); box-shadow: none; border: 1px dashed rgba(255,255,255,.22); }\n\n/* the seat box is the nameplate, centred on the rim; cards, hand name and bet stack toward the table centre */\n.seat {\n  position: absolute; left: var(--x); top: var(--y); transform: translate(-50%, -50%);\n  width: clamp(98px, 15.5cqw, 134px); transition: opacity .25s;\n}\n.xtra { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; width: max-content; }\n.xtra { bottom: calc(100% + 6px); flex-direction: column-reverse; }\n.hole { display: flex; font-size: clamp(12px, 2.4cqw, 20px); }\n.hole:empty { display: none; }\n.hole .card + .card { margin-left: -.35em; transform: rotate(4deg); transform-origin: bottom left; }\n.hn { font-size: 0.68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; background: var(--plate); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }\n.bet { position: absolute; left: var(--bx); top: var(--by); transform: translate(-50%, -50%); z-index: 2; font-weight: 700; font-size: 0.95rem; font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,.9); }\n.plate {\n  position: relative; width: 100%; background: var(--plate); border: 2px solid #20232b; border-radius: 10px;\n  padding: 6px 6px 5px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.6);\n}\n.seat.hot .plate { border-color: var(--hl); box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 0 14px rgba(255,255,255,.35); }\n.seat.folded { opacity: .4; }\n.ko { position: absolute; right: -10px; top: -10px; width: 24px; height: 24px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffb347, #e8761a); border: 2px solid #fff; color: #fff; font-size: .52rem; font-weight: 700; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.6); }\n.nm { font-size: 0.84rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.stk { font-size: 0.98rem; font-weight: 700; color: var(--stack); font-variant-numeric: tabular-nums; white-space: nowrap; }\n.seat.hero .nm { font-weight: 500; }\n.pos { position: absolute; top: -12px; left: 6px; font-size: .78rem; font-weight: 700; line-height: 1.35; background: #e6e6e6; color: #111; padding: 1px 9px; border-radius: 999px; }\n.btn-d { position: absolute; top: -15px; right: 2px; width: 30px; height: 30px; border-radius: 50%; background: #f0a21d; color: #3a2400; font-weight: 700; font-size: .95rem; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.7); border: 2px solid #ffd27a; }\n\n/* equity bar on the outer side of the plate */\n.eq { position: absolute; left: 0; right: 0; top: calc(100% + 4px); height: 18px; border-radius: 5px; background: #1a1c22; overflow: hidden; }\n.eq .f { position: absolute; left: 0; top: 0; bottom: 0; width: 0; transition: width .7s ease, background-color .4s; }\n.eq.win .f { background: var(--win); }\n.eq.lose .f { background: var(--lose); }\n.eq .t { position: relative; display: block; text-align: center; font-size: .72rem; font-weight: 700; line-height: 18px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.8); }\n\n.tl-wrap { position: relative; display: flex; justify-content: space-between; margin-top: 4px; }\n.tl-wrap::before { content: \"\"; position: absolute; left: var(--tl-inset, 8%); right: var(--tl-inset, 8%); top: 12px; height: 3px; background: #2a2a2a; }\n.tl-fill { position: absolute; left: var(--tl-inset, 8%); top: 12px; height: 3px; background: var(--stack); width: 0; transition: width .25s; }\n.ctrl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }\nbutton {\n  font: inherit; font-weight: 700; background: var(--btn); color: var(--fg); border: 0; border-bottom: 3px solid #1c1e24;\n  border-radius: 10px; padding: 9px 18px; cursor: pointer; min-height: 44px; min-width: 96px;\n}\nbutton:hover:not(:disabled) { background: var(--btn-hi); }\nbutton:disabled { opacity: .45; cursor: default; }\nbutton:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }\n#prev, #next { min-width: 56px; font-size: 1.4rem; line-height: 1; padding: 6px 14px; }\n.stp { position: relative; flex: 1; min-width: 0; background: none; border: 0; border-radius: 8px; min-height: 0; padding: 0 0 4px; text-align: center; color: var(--fg); font-weight: 500; }\n.stp:hover:not(:disabled) { background: none; }\n.stp .dot { display: block; width: 18px; height: 18px; border-radius: 50%; margin: 3px auto 0; border: 2px solid #4a4a4a; background: #000; position: relative; }\n.stp .lb { display: block; margin-top: 10px; font-size: .9rem; }\n.stp .pt { display: block; margin-top: 2px; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 400; }\n.stp.done .dot { background: #cfcfcf; border-color: #cfcfcf; }\n.stp.todo .lb { color: var(--muted); }\n.stp.now .dot { width: 26px; height: 26px; margin-top: 0; background: var(--stack); border-color: var(--stack); box-shadow: 0 0 0 5px rgba(242,162,42,.25); }\n.stp.now .lb { color: var(--stack); font-weight: 700; margin-top: 6px; }\n.cnt { font-size: 0.8rem; color: var(--muted); min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }\n.note { color: var(--muted); font-size: 0.78rem; }\n\n@media (max-width: 600px) {\n  .table { aspect-ratio: 1 / 1.3; }\n  .seat { --x: var(--nx); --y: var(--ny); width: 92px; }\n  .felt { inset: 9% 2%; border-width: 10px; }\n  .nm { font-size: 0.74rem; }\n  .stk { font-size: 0.84rem; }\n  .pos { font-size: .68rem; padding: 0 7px; }\n  .btn-d { width: 26px; height: 26px; font-size: .82rem; }\n  .hn { font-size: 0.6rem; padding: 1px 5px; }\n  .bet { font-size: .76rem; left: var(--bnx); top: var(--bny); }\n  .bet .bp { font-size: .66rem; }\n  .card .br { font-size: 1.35em; }\n  .board { font-size: 13px; gap: 5px; }\n  .hr { align-items: flex-start; }\n  .info { text-align: left; }\n  .stp .lb { font-size: .74rem; }\n  .stp .pt { font-size: .66rem; }\n}\n@media (prefers-reduced-motion: reduce) { .seat, .eq .f, .tl-fill { transition: none; } }\n</style>\n","body":"\n<div class=\"wrap\">\n  <header>\n    <div>\n      <h1>__TITLE__</h1>\n      <div class=\"sub\">__SUB__</div>\n    </div>\n    <div class=\"hr\">\n      <div class=\"info\"><div id=\"field\"></div><div id=\"entr\"></div><div id=\"avgl\">Stack moyen : <span id=\"avg\"></span></div></div>\n      <div class=\"unit\" role=\"group\" aria-label=\"Unité des montants\">\n        <button type=\"button\" data-u=\"bb\" aria-pressed=\"true\">Big blinds</button>\n        <button type=\"button\" data-u=\"chips\" aria-pressed=\"false\">Jetons</button>\n      </div>\n    </div>\n  </header>\n\n  <div class=\"table\" id=\"table\" aria-label=\"Table de poker, 6 joueurs\">\n    <div class=\"felt\"></div>\n    <div class=\"center\">\n      <div class=\"potbox\"><div class=\"pot\" id=\"pot\"></div><div class=\"pottot\" id=\"pottot\"></div></div>\n      <div class=\"pots\" id=\"pots\" hidden></div>\n      <div class=\"board\" id=\"board\"></div>\n    </div>\n  </div>\n\n  <div class=\"tl-wrap\" id=\"tl\" role=\"group\" aria-label=\"Streets\"><div class=\"tl-fill\" id=\"fill\"></div></div>\n  <div class=\"ctrl\">\n    <button id=\"prev\" type=\"button\" aria-label=\"Étape précédente\">‹</button>\n    <button id=\"next\" type=\"button\" aria-label=\"Étape suivante\">›</button>\n    <button id=\"play\" type=\"button\">Lecture</button>\n    <span class=\"cnt\" id=\"cnt\"></span>\n  </div>\n\n</div>\n\n","js":"(function () {\n  // DATA is injected by the builder: meta, seats, steps (state snapshots), streets order\n  var D = DATA, BB = D.meta.bb, HERO = D.meta.hero, unit = 'bb';\n  try { if (localStorage.getItem('replayer-unit') === 'chips') unit = 'chips'; } catch (e) {}\n  var seats = D.seats, steps = D.steps;\n\n  function amt(x) {\n    if (unit === 'chips') return Math.round(x).toLocaleString('fr-FR');\n    return (x / BB).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' BB';\n  }\n  var SU = { s: '♠', h: '♥', d: '♦', c: '♣' };\n  function card(c) {\n    if (!c) return '<div class=\"card back\" aria-label=\"carte cachée\"></div>';\n    var r = c[0] === 'T' ? '10' : c[0];\n    return '<div class=\"card su-' + c[1] + '\" aria-label=\"' + r + ' ' + c[1] + '\"><span class=\"tl\">' + r + '<i>' + SU[c[1]] + '</i></span><span class=\"br\">' + r + '</span></div>';\n  }\n\n  // main pot + side pots from what each player put in; eligible = still in the hand and covered that level\n  function pots(q) {\n    var live = seats.filter(function (s) { return !q.folded[s.n]; }).map(function (s) { return s.n; });\n    var lv = [];\n    live.forEach(function (n) { if (q.stack[n] === 0 && q.contrib[n] > 0 && lv.indexOf(q.contrib[n]) < 0) lv.push(q.contrib[n]); });\n    var mx = 0; seats.forEach(function (s) { mx = Math.max(mx, q.contrib[s.n]); });\n    if (lv.indexOf(mx) < 0) lv.push(mx);\n    lv.sort(function (a, b) { return a - b; });\n    var out = [], prev = 0;\n    lv.forEach(function (L) {\n      var a = 0; seats.forEach(function (s) { var c = q.contrib[s.n]; a += Math.min(c, L) - Math.min(c, prev); });\n      var el = live.filter(function (n) { return q.contrib[n] >= L; });\n      var last = out[out.length - 1];\n      if (a > 0) { if (last && last.el.join() === el.join()) last.amt += a; else out.push({ amt: a, el: el }); }\n      prev = L;\n    });\n    return out;\n  }\n  function potAt(i) { var t = 0; pots(steps[i].s).forEach(function (p) { t += p.amt; }); return t; }\n\n  // header: tournament field\n  (function () {\n    var m = D.meta, f = document.getElementById('field');\n    var left = m.left == null ? '?' : m.left;\n    var itm = m.itm != null ? m.itm : (m.left != null && m.paid != null && m.left <= m.paid);\n    f.textContent = 'Joueurs restants : ';\n    var n = document.createElement('span'); n.textContent = left + (itm ? ' (ITM)' : ''); if (itm) n.className = 'itm';\n    f.appendChild(n);\n    if (!itm && m.paid != null) f.appendChild(document.createTextNode(' (' + m.paid + ')'));\n    document.getElementById('entr').textContent = 'Entrants : ' + (m.entrants == null ? '?' : m.entrants);\n    // shared hands from the web tool: hide what the hand history does not say\n    if (m.hideUnknown) {\n      f.hidden = m.left == null; document.getElementById('entr').hidden = m.entrants == null;\n      document.getElementById('avgl').hidden = m.avg == null;\n    }\n  })();\n\n  var tbl = document.getElementById('table');\n  tbl.setAttribute('aria-label', 'Table de poker, ' + seats.length + ' joueurs');\n  var seatEls = {}, betEls = {};\n  seats.forEach(function (s) {\n    var d = document.createElement('div');\n    d.setAttribute('style', '--lx:' + s.xy[0] + '%;--ly:' + s.xy[1] + '%;--nx:' + s.xn[0] + '%;--ny:' + s.xn[1] + '%');\n    d.innerHTML = '<div class=\"xtra\"><div class=\"hole\"></div></div>' +\n      '<div class=\"plate\"><span class=\"pos\"></span>' + (s.dealer ? '<span class=\"btn-d\" aria-label=\"Bouton\">D</span>' : '') +\n      (s.ko ? '<span class=\"ko\" aria-label=\"Prime KO\">KO</span>' : '') + '<div class=\"nm\"></div><div class=\"stk\"></div>' + (s.bounty ? '<div class=\"bty\"></div>' : '') + '</div>' +\n      '<div class=\"eq\" hidden><div class=\"f\"></div><span class=\"t\"></span></div>';\n    d.querySelector('.pos').textContent = s.pos;\n    d.querySelector('.nm').textContent = s.n;\n    if (s.bounty) d.querySelector('.bty').textContent = 'KO ' + s.bounty;\n    tbl.appendChild(d); seatEls[s.n] = d;\n    var bt = document.createElement('div'); bt.className = 'bet'; bt.hidden = true;\n    bt.setAttribute('style', '--bx:' + s.bxy[0] + '%;--by:' + s.bxy[1] + '%;--bnx:' + s.bxn[0] + '%;--bny:' + s.bxn[1] + '%');\n    tbl.appendChild(bt); betEls[s.n] = bt;\n  });\n\n  var order = [];\n  steps.forEach(function (p) { if (order.indexOf(p.label) < 0) order.push(p.label); });\n  var tl = document.getElementById('tl'), nodes = [];\n  order.forEach(function (lab) {\n    var first = -1, lastI = -1;\n    steps.forEach(function (p, i) { if (p.label === lab) { if (first < 0) first = i; lastI = i; } });\n    var b = document.createElement('button'); b.type = 'button'; b.className = 'stp todo';\n    b.innerHTML = '<span class=\"dot\"></span><span class=\"lb\">' + lab + '</span><span class=\"pt\"></span>';\n    b.addEventListener('click', function () { stop(); go(first); });\n    tl.appendChild(b);\n    var k = lastI; while (k > first && potAt(k) === 0) k--;\n    nodes.push({ el: b, pot: potAt(k) });\n  });\n  var inset = 50 / order.length;\n  tl.style.setProperty('--tl-inset', inset + '%');\n\n  var cur = 0, timer = null;\n  function render() {\n    var p = steps[cur], s = p.s;\n    var ps = pots(s), tot = 0, mine = 0, onTable = 0;\n    ps.forEach(function (q) { tot += q.amt; if (q.el.indexOf(HERO) >= 0) mine += q.amt; });\n    seats.forEach(function (x) { onTable += s.bet[x.n]; });\n    var base = tot - onTable, post = ['Flop', 'Turn', 'River'].indexOf(p.label) >= 0;\n    var best = -1; if (s.eq) Object.keys(s.eq).forEach(function (k) { best = Math.max(best, s.eq[k]); });\n    seats.forEach(function (x) {\n      var el = seatEls[x.n], shown = s.reveal[x.n], e = s.eq && s.eq[x.n] != null ? s.eq[x.n] : null;\n      el.className = 'seat' + (x.n === HERO ? ' hero' : '') + (s.folded[x.n] ? ' folded' : '') + (s.hot === x.n ? ' hot' : '') + (e !== null ? ' has-eq' : '');\n      el.querySelector('.hole').innerHTML = s.folded[x.n] ? '' : (shown ? card(shown[0]) + card(shown[1]) : card() + card());\n      var bt = betEls[x.n]; bt.hidden = !(s.bet[x.n] > 0);\n      // postflop: bet size as a share of the pot before this street's bets\n      var pct = (post && base > 0) ? Math.round(s.bet[x.n] / base * 100) + ' %' : '';\n      bt.innerHTML = '<span class=\"ba\"></span>' + (pct ? '<span class=\"bp\"></span>' : '');\n      bt.querySelector('.ba').textContent = amt(s.bet[x.n]); if (pct) bt.querySelector('.bp').textContent = pct;\n      el.querySelector('.stk').textContent = amt(s.stack[x.n]);\n      var q = el.querySelector('.eq'), f = q.querySelector('.f');\n      if (e === null) { q.hidden = true; f.style.width = '0'; }\n      else {\n        var wasHidden = q.hidden; q.hidden = false;\n        q.className = 'eq ' + (e >= best - 1e-9 ? 'win' : 'lose');\n        q.querySelector('.t').textContent = e.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %';\n        if (wasHidden) { f.style.width = '0'; void f.offsetWidth; }\n        f.style.width = '100%';\n      }\n    });\n    var bd = '';\n    for (var i = 0; i < 5; i++) bd += s.board[i] ? card(s.board[i]) : '<div class=\"card empty\"></div>';\n    document.getElementById('board').innerHTML = bd;\n    // Pot = what is already in the middle; Pot total = pot + bets still in front of the players\n    document.getElementById('pot').textContent = 'Pot : ' + amt(base);\n    var pt = document.getElementById('pottot'); pt.style.visibility = onTable > 0 ? 'visible' : 'hidden'; pt.textContent = 'Pot total : ' + amt(tot); // line keeps its place so the board never moves\n    var sub = '';\n    if (ps.length > 1) {\n      sub = ps.map(function (q, i) { return (i === 0 ? 'Principal ' : 'Annexe ' + i + ' ') + amt(q.amt); }).join(' · ');\n      if (mine !== tot) sub += ' · Mon pot ' + amt(mine);\n    }\n    var se = document.getElementById('pots'); se.textContent = sub; se.hidden = !sub;\n    var avg = D.meta.avg;\n    document.getElementById('avg').textContent = avg == null ? '?' : (unit === 'chips' ? (Math.round(avg / 1000) * 1000).toLocaleString('fr-FR') : amt(avg));\n    document.getElementById('cnt').textContent = (cur + 1) + ' / ' + steps.length;\n    var ci = order.indexOf(p.label);\n    nodes.forEach(function (n, i) {\n      n.el.className = 'stp ' + (i < ci ? 'done' : i === ci ? 'now' : 'todo');\n      n.el.querySelector('.pt').textContent = amt(n.pot);\n      if (i === ci) n.el.setAttribute('aria-current', 'step'); else n.el.removeAttribute('aria-current');\n    });\n    document.getElementById('fill').style.width = order.length > 1 ? ((100 - 2 * inset) * ci / (order.length - 1)) + '%' : '0';\n    document.getElementById('prev').disabled = cur === 0;\n    document.getElementById('next').disabled = cur === steps.length - 1;\n  }\n  function go(i) { cur = Math.max(0, Math.min(steps.length - 1, i)); render(); }\n  function stop() { if (timer) { clearInterval(timer); timer = null; document.getElementById('play').textContent = 'Lecture'; } }\n  document.getElementById('prev').addEventListener('click', function () { stop(); go(cur - 1); });\n  document.getElementById('next').addEventListener('click', function () { stop(); go(cur + 1); });\n  document.getElementById('play').addEventListener('click', function () {\n    if (timer) { stop(); return; }\n    if (cur === steps.length - 1) go(0);\n    document.getElementById('play').textContent = 'Pause';\n    timer = setInterval(function () { if (cur >= steps.length - 1) stop(); else go(cur + 1); }, 1300);\n  });\n  document.addEventListener('keydown', function (e) {\n    if (e.key === 'ArrowRight') { stop(); go(cur + 1); }\n    if (e.key === 'ArrowLeft') { stop(); go(cur - 1); }\n  });\n  var ub = document.querySelectorAll('.unit button');\n  function setUnit(u) {\n    unit = u;\n    Array.prototype.forEach.call(ub, function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-u') === u ? 'true' : 'false'); });\n    try { localStorage.setItem('replayer-unit', u); } catch (e) {}\n    render();\n  }\n  Array.prototype.forEach.call(ub, function (b) { b.addEventListener('click', function () { setUnit(b.getAttribute('data-u')); }); });\n  setUnit(unit);\n})();\n"};
+  var $ = function (id) { return document.getElementById(id); };
+  var hands = [], current = null, ctx = { l: null, p: null, e: null };
+
+  // ---------- equity in a worker (exact preflop enumeration takes a few seconds) ----------
+  var worker = null;
+  function getWorker() {
+    if (worker) return worker;
+    try {
+      var src = $('core-src').textContent + '\nonmessage=function(e){postMessage({id:e.data.id,r:RCore.equity(e.data.h,e.data.b)});};';
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    } catch (e) { worker = null; }
+    return worker;
+  }
+  var cache = {}, seq = 0;
+  function computeEq(req) {
+    return new Promise(function (res) {
+      var w = getWorker();
+      if (!w) { res(RCore.equity(req.h, req.b)); return; }
+      var id = ++seq;
+      var on = function (e) { if (e.data.id === id) { w.removeEventListener('message', on); res(e.data.r); } };
+      w.addEventListener('message', on);
+      w.postMessage({ id: id, h: req.h, b: req.b });
+    });
+  }
+  function buildHand(H) {
+    var reqs = [];
+    var eqFn = function (h, b) {
+      var key = RCore.eqKey(h, b);
+      if (cache[key]) return cache[key];
+      if (b.length >= 3) { cache[key] = RCore.equity(h, b); return cache[key]; }
+      reqs.push({ key: key, h: h, b: b }); return null;
+    };
+    RCore.buildData(H, eqFn);
+    if (!reqs.length) return Promise.resolve(RCore.buildData(H, eqFn).data);
+    $('calc').hidden = false;
+    return reqs.reduce(function (p, r) { return p.then(function () { return computeEq(r).then(function (v) { cache[r.key] = v; }); }); }, Promise.resolve())
+      .then(function () { $('calc').hidden = true; return RCore.buildData(H, eqFn).data; });
+  }
+
+  // ---------- share links: the hand text, deflated, in the URL hash ----------
+  function b64u(bytes) { var s = ''; for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function unb64u(str) { str = str.replace(/-/g, '+').replace(/_/g, '/'); while (str.length % 4) str += '='; var s = atob(str), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+  function pack(text) {
+    var bytes = new TextEncoder().encode(text);
+    if (typeof CompressionStream === 'undefined') return Promise.resolve('u' + b64u(bytes));
+    var cs = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    return new Response(cs).arrayBuffer().then(function (buf) { return 'z' + b64u(new Uint8Array(buf)); });
+  }
+  function unpack(s) {
+    var kind = s[0], bytes = unb64u(s.slice(1));
+    if (kind === 'u') return Promise.resolve(new TextDecoder().decode(bytes));
+    var ds = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(ds).text();
+  }
+
+  // ---------- hand list ----------
+  var SU = { s: '♠', h: '♥', d: '♦', c: '♣' };
+  function mini(c) { var r = c[0] === 'T' ? '10' : c[0]; return '<span class="mini ' + c[1] + '" aria-label="' + r + SU[c[1]] + '">' + r + '<br>' + SU[c[1]] + '</span>'; }
+  function summarize(h) {
+    var H = h.H, sim = RCore.simulate(H, function () { return null; });
+    var first = sim.steps[0].s, last = sim.steps[sim.steps.length - 1].s, hero = H.hero;
+    var net = last.stack[hero] - first.stack[hero];
+    var acts = [].concat(H.preflop || [], H.flop ? H.flop.actions : [], H.turn ? H.turn.actions : [], H.river ? H.river.actions : []);
+    var vol = acts.some(function (a) { return a[0] === hero && (a[1] === 'call' || a[1] === 'bet' || a[1] === 'raise'); });
+    var heroFoldPre = (H.preflop || []).some(function (a) { return a[0] === hero && a[1] === 'fold'; });
+    var allin = sim.steps.some(function (s) { return s.s.stack[hero] === 0; });
+    var sd = sim.steps.some(function (s) { return s.label === 'Showdown'; }) && !last.folded[hero];
+    var lay = RCore.layout(H), pos = (lay.find(function (x) { return x.n === hero; }) || {}).pos || '';
+    var board = [].concat(H.flop ? H.flop.board : [], H.turn ? H.turn.board : [], H.river ? H.river.board : []);
+    return { net: net / H.blinds[2], played: vol || (!heroFoldPre && board.length > 0 && !last.folded[hero]), allin: allin, sd: sd, pos: pos, board: board };
+  }
+  function renderList() {
+    var only = $('onlyplayed').checked, rows = $('rows'), shown = 0;
+    rows.innerHTML = '';
+    hands.forEach(function (h, i) {
+      if (h.error) return;
+      if (only && !h.sum.played) return;
+      shown++;
+      var d = document.createElement('div'); d.className = 'row'; d.tabIndex = 0; d.setAttribute('role', 'listitem');
+      var net = Math.round(h.sum.net * 10) / 10;
+      var tags = (h.sum.allin ? '<span class="tag">All-in</span>' : '') + (h.sum.sd ? '<span class="tag">Showdown</span>' : '');
+      d.innerHTML = '<span class="n">#' + h.num + '</span><span class="hc">' + h.H.heroCards.map(mini).join('') + '</span>' +
+        '<span class="pos"></span><span class="bd">' + h.sum.board.map(mini).join('') + '</span>' +
+        '<span style="display:flex;gap:10px;align-items:center;justify-content:flex-end"><span class="tags">' + tags + '</span>' +
+        '<span class="net ' + (net > 0 ? 'pos-net' : net < 0 ? 'neg-net' : '') + '">' + (net > 0 ? '+' : '') + net.toLocaleString('fr-FR') + ' BB</span></span>';
+      d.querySelector('.pos').textContent = h.sum.pos;
+      var open = function () { openHand(i, true); };
+      d.addEventListener('click', open);
+      d.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      rows.appendChild(d);
+    });
+    var ok = hands.filter(function (h) { return !h.error; }).length;
+    $('lcount').textContent = shown + ' main' + (shown > 1 ? 's' : '') + (only ? ' jouée' + (shown > 1 ? 's' : '') + ' sur ' + ok : '');
+  }
+  function load(text) {
+    var res = WParse.parse(text || '');
+    var ok = res.filter(function (h) { return !h.error; });
+    if (!ok.length) {
+      $('msg').className = 'msg err';
+      $('msg').textContent = res.length ? 'Aucune main lisible : ' + res[0].error + '.' : 'Aucune main Winamax trouvée dans ce texte.';
+      return;
+    }
+    res.forEach(function (h) { if (!h.error) h.sum = summarize(h); });
+    hands = res;
+    $('msg').className = 'msg';
+    var skipped = res.length - ok.length;
+    $('msg').textContent = ok.length + ' main' + (ok.length > 1 ? 's' : '') + ' chargée' + (ok.length > 1 ? 's' : '') + (skipped ? ' (' + skipped + ' ignorée' + (skipped > 1 ? 's' : '') + ')' : '') + '.';
+    if (ok.length === 1) { openHand(res.indexOf(ok[0]), true); return; }
+    $('list').hidden = false; $('viewer').hidden = true;
+    renderList();
+    $('list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---------- viewer ----------
+  function fitFrame() {
+    var f = $('frame');
+    try { var h = f.contentDocument.documentElement.scrollHeight; if (h) f.style.height = h + 'px'; } catch (e) {}
+  }
+  function show(h) {
+    var H = JSON.parse(JSON.stringify(h.H));
+    H.meta.left = ctx.l; H.meta.paid = ctx.p; H.meta.entrants = ctx.e;
+    return buildHand(H).then(function (data) {
+      var f = $('frame');
+      f.onload = function () { fitFrame(); setTimeout(fitFrame, 300); };
+      f.srcdoc = RCore.renderPage(data, T);
+      document.title = data.meta.pageTitle || 'Replayer de mains';
+    });
+  }
+  function openHand(i, fromList) {
+    current = hands[i];
+    $('input').hidden = true; $('shot').closest('.card').hidden = true;
+    $('viewer').hidden = false; $('list').hidden = !fromList || hands.length < 2; $('back').hidden = hands.length < 2;
+    $('smsg').textContent = '';
+    show(current).then(function () { $('viewer').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    $('list').hidden = true;
+  }
+  function shareUrl() {
+    return pack(current.text).then(function (z) {
+      var q = 'h=' + z;
+      if (ctx.l) q += '&l=' + ctx.l; if (ctx.p) q += '&p=' + ctx.p; if (ctx.e) q += '&e=' + ctx.e;
+      return location.origin + location.pathname + '#' + q;
+    });
+  }
+  function readCtx() {
+    var v = function (id) { var n = parseInt($(id).value, 10); return n > 0 ? n : null; };
+    ctx = { l: v('cl'), p: v('cp'), e: v('ce') };
+  }
+
+  // ---------- events ----------
+  var drop = $('drop'), file = $('file');
+  drop.addEventListener('click', function () { file.click(); });
+  drop.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+  ['dragenter', 'dragover'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function (e) { var f = e.dataTransfer.files[0]; if (f) f.text().then(load); });
+  file.addEventListener('change', function () { var f = file.files[0]; if (f) f.text().then(load); file.value = ''; });
+  $('load').addEventListener('click', function () { load($('paste').value); });
+  $('onlyplayed').addEventListener('change', renderList);
+  $('back').addEventListener('click', function () { $('viewer').hidden = true; $('list').hidden = false; $('input').hidden = false; $('shot').closest('.card').hidden = false; renderList(); history.replaceState(null, '', location.pathname); });
+  ['cl', 'cp', 'ce'].forEach(function (id) { $(id).addEventListener('change', function () { readCtx(); if (current) show(current); }); });
+  $('share').addEventListener('click', function () {
+    shareUrl().then(function (url) {
+      var done = function () { $('smsg').className = 'msg'; $('smsg').textContent = 'Lien copié. Colle-le dans Discord ou où tu veux.'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { prompt('Copie ce lien :', url); });
+      else prompt('Copie ce lien :', url);
+    });
+  });
+  $('copyprompt').addEventListener('click', function () {
+    var t = $('prompt').value;
+    var done = function () { $('pmsg').textContent = 'Message copié.'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function () { $('prompt').select(); });
+    else $('prompt').select();
+  });
+  window.addEventListener('resize', fitFrame);
+
+  // ---------- opened from a share link ----------
+  function fromHash() {
+    var m = location.hash.match(/[#&]h=([A-Za-z0-9_-]+)/);
+    if (!m) return;
+    var g = function (k) { var r = location.hash.match(new RegExp('[#&]' + k + '=(\\d+)')); return r ? +r[1] : null; };
+    ctx = { l: g('l'), p: g('p'), e: g('e') };
+    $('cl').value = ctx.l || ''; $('cp').value = ctx.p || ''; $('ce').value = ctx.e || '';
+    unpack(m[1]).then(function (text) {
+      var res = WParse.parse(text).filter(function (h) { return !h.error; });
+      if (!res.length) throw new Error('bad');
+      hands = res; res[0].sum = summarize(res[0]);
+      ['input', 'shot', 'top'].forEach(function (id) { var el = $(id); (id === 'shot' ? el.closest('.card') : el).hidden = true; });
+      $('home').hidden = false; $('ctx').hidden = true;
+      openHand(0, false);
+    }).catch(function () { $('msg').className = 'msg err'; $('msg').textContent = 'Ce lien de partage est incomplet ou abîmé.'; });
+  }
+  fromHash();
+})();
+</script>
+</body>
+</html>
